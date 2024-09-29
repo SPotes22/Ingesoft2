@@ -15,13 +15,13 @@
         <div  class="card shadow">
             <nav class="navbar navbar-expand-lg bg-body-tertiary">
                 <div class="container-fluid">
-                  <a class="navbar-brand" href="#">Navbar</a>
+                  <a class="navbar-brand" href="/">Navbar</a>
                   <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavAltMarkup" aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                   </button>
                   <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
                     <div class="navbar-nav">
-                      <a class="nav-link active" aria-current="page" href="#">Evaluar Candidatos</a>
+                      <a class="nav-link active" aria-current="page" href="/pruebas">Evaluar Candidatos</a>
                       <a class="nav-link" href="#">Afiliar Candidato</a>
                       <a class="nav-link" href="#">Calcular Nomina</a>
                       <a class="nav-link disabled" aria-disabled="true">Calcular Liquidacion</a>
@@ -38,19 +38,27 @@
                 <form action="/user" method="post">
                     <div class="row mb-4">
                         <div class="col">
-                            <label for="">Username</label>
-                            <input type="text" class="from-control mb-3" name="username">
+                            <label for="">Nombre</label>
+                            <input type="text" class="form-control mb-3" name="nombre" required>
                         </div>
                         <div class="col">
                             <label for="">Email</label>
-                            <input type="text" class="from-control mb-3" name="email">
+                            <input type="email" class="form-control mb-3" name="email" required>
                         </div>
                         <div class="col">
                             <label for="">Password</label>
-                            <input type="text" class="from-control mb-3" name="password">
+                            <input type="password" class="form-control mb-3" name="password" required>
                         </div>
                         <div class="col">
-                            <button class="btn btn-primary mb-3 mt-3" type="submit">save</button>
+                            <label for="">Rol</label>
+                            <select name="rol" class="form-control mb-3">
+                                {% for role in roles %}
+                                    <option value="{{ role.id }}">{{ role.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col">
+                            <button class="btn btn-primary mb-3 mt-3" type="submit">Save</button>
                         </div>
                     </div>
                 </form>
@@ -59,9 +67,10 @@
                 <table class="table table-bordered">
                     <thead>
                         <th scope="col">@</th>
-                        <th scope="col">username</th>
+                        <th scope="col">nombre</th>
                         <th scope="col">email</th>
                         <th scope="col">password</th>
+                        <th scope="col">ROl</th>
                         <th scope="col">edit</th>
                         <th scope="col">delete</th>
                     </thead>
@@ -70,37 +79,44 @@
                     {% for d in data %}
                         <tr>
                             <td>{{ d.id }}</td>
-                            <td>{{ d.username }}</td>
+                            <td>{{ d.nombre }}</td>
                             <td>{{ d.email }}</td>
                             <td>{{ d.password }}</td>
+                            <td>{{ d.rol_id }}</td>
                             <td><button class="btn btn-primary btn-sm" id="btn-edit{{d.id}}" data-bs-toggle="modal" data-bs-target="#modal{{d.id}}">Edit</td>
                             <td><a href="{{url_for('delete',id=d.id)}}" class="btn btn-danger btn-sm">Delete</a></td>
                         </tr>
                         <!-- Modal -->
                         <div class="modal fade" id="modal{{d.id}}" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
                             <div class="modal-dialog">
-                              <div class="modal-content">
-                                <div class="modal-header">
-                                  <h1 class="modal-title fs-5" id="exampleModalLabel">{{d.username}}</h1>
-                                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h1 class="modal-title fs-5" id="exampleModalLabel">{{d.nombre}}</h1>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <form action="/edit/{{d.id}}" method="post">
+                                            <label>Nombre</label>
+                                            <input type="text" class="form-control mb-3" name="nombre" value="{{d.nombre}}">
+                                            <label>Email</label>
+                                            <input type="text" class="form-control mb-3" name="email" value="{{d.email}}">
+                                            <label>Password</label>
+                                            <input type="text" class="form-control mb-3" name="password" value="{{d.password}}">
+                                            <label>ROL</label>
+                                            <select name="rol" class="form-control mb-3">
+                                                {% for role in roles %}
+                                                    <option value="{{ role.id }}">{{ role.nombre }}</option>
+                                                {% endfor %}
+                                            </select>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="submit" class="btn btn-primary">Save changes</button>
+                                    </div>
+                                        </form>
                                 </div>
-                                <div class="modal-body">
-                                    <form action="/edit/{{d.id}}" method="post">
-                                        <label>Username</label>
-                                        <input type="text" class="form-control mb-3" name="username" value="{{d.username}}">
-                                        <label>Email</label>
-                                        <input type="text" class="form-control mb-3" name="email" value="{{d.email}}">
-                                        <label>Password</label>
-                                        <input type="text" class="form-control mb-3" name="password" value="{{d.password}}">
-                                  
-                                </div>
-                                <div class="modal-footer">
-                                  <button type="submit" class="btn btn-primary">Save changes</button>
-                                </div>
-                                </form>
-                              </div>
                             </div>
-                          </div>
+                        </div>
+
 
                     {% endfor %}
                 </tbody>

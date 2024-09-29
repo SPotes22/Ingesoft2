@@ -2,20 +2,26 @@
 
 # Inicializar Venv
 
-    . src/activate
+    . bin/activate
 
 # Inicializar proyecto
 
     python3 src/app.py
 
+
 # Que se puede hacer hasta el momento?
 
-* aniadir
-* eliminar
-* editar
+* aniadir usuarios y roles
+* eliminar usuarios
+* editar campos del usuario
 
 # Pendiente
 
 * calcular nomina
 * calcular liquidacion
 * "afiliar" usuarios a arl, pension , caja de compensacion
+
+# problemas
+problemas con la base de datos o integracion de una diferente
+usa la ruta
+    /create/
