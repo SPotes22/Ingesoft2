@@ -1,11 +1,13 @@
-from flask import Flask, render_template , request , redirect , url_for
+from flask import Flask, render_template , request , redirect , url_for , session
 import os
 import database as db
+from datetime import date
 
 template_dir = os.path.dirname(os.path.abspath(os.path.dirname(__file__)))
 template_dir = os.path.join(template_dir,"src","templates")
 
 app = Flask(__name__, template_folder = template_dir)
+app.secret_key = 'mi_clave_super_secreta_123'
 
 # rutas de la aplicacion
 
@@ -140,7 +142,101 @@ def update_contract(usuario_id):
     return redirect(url_for('pruebas'))
 
 
+# Autenticación ficticia
+def is_logged_in():
+    return 'user_id' in session
 
+@app.route('/nomina', methods=['GET', 'POST'])
+def nomina():
+    if not is_logged_in():
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    cursor = db.database.cursor()
+
+    # Obtener información del usuario y sus horas trabajadas
+    query = """
+    SELECT u.nombre, u.email, c.salario, h.horas_normales, h.horas_extras, h.horas_extra_diurna_festiva
+    FROM usuarios u
+    JOIN contrataciones c ON u.id = c.usuario_id
+    LEFT JOIN horas_trabajadas h ON u.id = h.usuario_id
+    WHERE u.id = %s
+    """
+    cursor.execute(query, (user_id,))
+    usuario = cursor.fetchone()
+
+    if request.method == "POST":
+        # Obtener las horas ingresadas en el formulario
+        horas_trab = float(request.form['horas_trab'])
+        hora_extra = float(request.form['hora_extra'])
+        hora_extra_festiva = float(request.form['hora_extra_festiva'])
+
+        # Insertar o actualizar las horas trabajadas en la base de datos
+        if usuario[3] is None:  # Si el usuario no tiene horas registradas
+            query_insert = """
+            INSERT INTO horas_trabajadas (usuario_id, horas_normales, horas_extras, horas_extra_diurna_festiva)
+            VALUES (%s, %s, %s, %s)
+            """
+            cursor.execute(query_insert, (user_id, horas_trab, hora_extra, hora_extra_festiva))
+        else:
+            query_update = """
+            UPDATE horas_trabajadas
+            SET horas_normales = %s, horas_extras = %s, horas_extra_diurna_festiva = %s
+            WHERE usuario_id = %s
+            """
+            cursor.execute(query_update, (horas_trab, hora_extra, hora_extra_festiva, user_id))
+
+        db.database.commit()
+
+        # Convertir el salario y horas a float antes del cálculo
+        salario_base = float(usuario[2])  # Convertir salario a float
+        total_nomina = salario_base + (hora_extra * 1.5) + (hora_extra_festiva * 2)
+
+        # Renderizar la nómina calculada
+        return render_template("nomina.html", usuario=usuario, ingresar_horas=False, nomina=total_nomina)
+
+    # Si es GET, renderizar el formulario si no hay horas ingresadas
+    if usuario[3] is None:  # Si no tiene horas registradas
+        return render_template("nomina.html", usuario=usuario, ingresar_horas=True)
+    
+    # Si ya tiene horas registradas, calcular la nómina y mostrarla
+    salario_base = float(usuario[2])  # Convertir salario a float
+    horas_trabajadas = usuario[3]
+    hora_extra = usuario[4]
+    hora_extra_festiva = usuario[5]
+
+    total_nomina = ((salario_base/240)*float(horas_trabajadas)) + (float(hora_extra) * 7065) + (float(hora_extra_festiva) * 11304)
+    deducciones =   (salario_base*0.08)
+    total_nomina = total_nomina - deducciones
+    # Renderizar la nómina calculada
+    return render_template("nomina.html", usuario=usuario, ingresar_horas=False, nomina=total_nomina)
+
+
+
+@app.route('/login', methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form['username']
+        password = request.form['password']
+        
+        # Verifica las credenciales del usuario
+        cursor = db.database.cursor()
+        query = "SELECT id FROM usuarios WHERE nombre = %s AND password = %s"
+        cursor.execute(query, (username, password))
+        user = cursor.fetchone()
+        
+        if user:
+            session['user_id'] = user[0]  # Guarda el ID del usuario en la sesión
+            return redirect(url_for('nomina'))  # Redirige a la página de nómina
+        else:
+            return "Credenciales incorrectas"
+    
+    return render_template("login.html")
+
+@app.route('/logout')
+def logout():
+    session.clear()  # Elimina toda la información de la sesión
+    return redirect(url_for('login'))  # Redirige al usuario a la página de inicio de sesión
 
 @app.route('/create/')
 def create():
