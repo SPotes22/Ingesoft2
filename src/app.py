@@ -79,6 +79,81 @@ def edit(id):
 
     return redirect(url_for('home'))
 
+@app.route('/bonos', methods=["GET"])
+def bonos():
+    # Verificar si el usuario está logueado
+    if not is_logged_in():
+        return redirect(url_for('login'))
+    
+    # Verificar si el usuario tiene el rol de HR
+    if current_user_rol() != 'HR':
+        return render_template("error.html", mensaje="Rol incorrecto para acceder a este portal")
+
+    cursor = db.database.cursor()
+
+    # Obtener la lista de usuarios para mostrar en la página de bonos
+    query = """
+    SELECT u.id, u.nombre, u.email 
+    FROM usuarios u
+    """
+    cursor.execute(query)
+    usuarios = cursor.fetchall()
+
+    cursor.close()
+
+    return render_template('bonos.html', usuarios=usuarios)
+
+
+@app.route('/añadir_bonificacion', methods=['POST'])
+def añadir_bonificacion():
+    usuario_id = request.form['usuario_id']
+    monto = request.form['monto']
+    descripcion = request.form['descripcion']
+    fecha_asignacion = request.form['fecha_asignacion']
+
+    cursor = db.database.cursor()
+    query = "INSERT INTO bonos (usuario_id, monto, descripcion, fecha_asignacion) VALUES (%s, %s, %s, %s)"
+    cursor.execute(query, (usuario_id, monto, descripcion, fecha_asignacion))
+    db.database.commit()
+
+    cursor.close()
+    return redirect(url_for('bonos'))
+
+@app.route('/insertar_horas', methods=['POST'])
+def insertar_horas():
+    usuario_id = request.form['usuario_id']
+    horas_normales = request.form['horas_normales']
+    horas_extras = request.form['horas_extras']
+    horas_festivas = request.form['horas_festivas']
+
+    cursor = db.database.cursor()
+    query = "INSERT INTO horas_trabajadas (usuario_id, horas_normales, horas_extras, horas_extra_diurna_festiva) VALUES (%s, %s, %s, %s)"
+    cursor.execute(query, (usuario_id, horas_normales, horas_extras, horas_festivas))
+    db.database.commit()
+
+    cursor.close()
+    return redirect(url_for('bonos'))
+
+def current_user_rol():
+    # Verifica si el usuario está autenticado y tiene un rol asociado en la sesión
+    if 'user_id' in session:
+        cursor = db.database.cursor()
+
+        # Se cambia la consulta para obtener el nombre del rol desde la tabla `roles`
+        query = """
+        SELECT r.nombre 
+        FROM usuarios u 
+        JOIN roles r ON u.rol_id = r.id 
+        WHERE u.id = %s
+        """
+        cursor.execute(query, (session['user_id'],))
+        result = cursor.fetchone()
+
+        cursor.close()
+
+        if result:
+            return result[0]  # Retorna el nombre del rol del usuario
+    return None  # Si no hay usuario logueado o no tiene rol
 
 
 @app.route('/pruebas', methods=["GET"])
@@ -154,64 +229,124 @@ def nomina():
     user_id = session['user_id']
     cursor = db.database.cursor()
 
-    # Obtener información del usuario y sus horas trabajadas
-    query = """
-    SELECT u.nombre, u.email, c.salario, h.horas_normales, h.horas_extras, h.horas_extra_diurna_festiva
-    FROM usuarios u
-    JOIN contrataciones c ON u.id = c.usuario_id
-    LEFT JOIN horas_trabajadas h ON u.id = h.usuario_id
-    WHERE u.id = %s
-    """
-    cursor.execute(query, (user_id,))
-    usuario = cursor.fetchone()
+    try:
+        # Obtener información del usuario y sus horas trabajadas
+        query = """
+        SELECT u.nombre, u.email, c.salario, h.horas_normales, h.horas_extras, h.horas_extra_diurna_festiva
+        FROM usuarios u
+        JOIN contrataciones c ON u.id = c.usuario_id
+        LEFT JOIN horas_trabajadas h ON u.id = h.usuario_id
+        WHERE u.id = %s
+        GROUP BY u.id, u.nombre, u.email, c.salario, h.horas_normales, h.horas_extras, h.horas_extra_diurna_festiva
+        """
+        cursor.execute(query, (user_id,))
+        usuario = cursor.fetchone()
 
-    if request.method == "POST":
-        # Obtener las horas ingresadas en el formulario
-        horas_trab = float(request.form['horas_trab'])
-        hora_extra = float(request.form['hora_extra'])
-        hora_extra_festiva = float(request.form['hora_extra_festiva'])
+        # Verificar si hay datos del usuario
+        if not usuario:
+            return "Usuario no encontrado", 404
 
-        # Insertar o actualizar las horas trabajadas en la base de datos
-        if usuario[3] is None:  # Si el usuario no tiene horas registradas
-            query_insert = """
-            INSERT INTO horas_trabajadas (usuario_id, horas_normales, horas_extras, horas_extra_diurna_festiva)
-            VALUES (%s, %s, %s, %s)
-            """
-            cursor.execute(query_insert, (user_id, horas_trab, hora_extra, hora_extra_festiva))
-        else:
-            query_update = """
-            UPDATE horas_trabajadas
-            SET horas_normales = %s, horas_extras = %s, horas_extra_diurna_festiva = %s
-            WHERE usuario_id = %s
-            """
-            cursor.execute(query_update, (horas_trab, hora_extra, hora_extra_festiva, user_id))
+        if request.method == "POST":
+            # Obtener las horas ingresadas en el formulario
+            horas_trab = float(request.form['horas_trab'])
+            hora_extra = float(request.form['hora_extra'])
+            hora_extra_festiva = float(request.form['hora_extra_festiva'])
 
-        db.database.commit()
+            # Insertar o actualizar las horas trabajadas
+            if usuario[3] is None:  # Si el usuario no tiene horas registradas
+                query_insert = """
+                INSERT INTO horas_trabajadas (usuario_id, horas_normales, horas_extras, horas_extra_diurna_festiva)
+                VALUES (%s, %s, %s, %s)
+                """
+                cursor.execute(query_insert, (user_id, horas_trab, hora_extra, hora_extra_festiva))
+            else:
+                query_update = """
+                UPDATE horas_trabajadas
+                SET horas_normales = %s, horas_extras = %s, horas_extra_diurna_festiva = %s
+                WHERE usuario_id = %s
+                """
+                cursor.execute(query_update, (horas_trab, hora_extra, hora_extra_festiva, user_id))
 
-        # Convertir el salario y horas a float antes del cálculo
-        salario_base = float(usuario[2])  # Convertir salario a float
-        total_nomina = salario_base + (hora_extra * 1.5) + (hora_extra_festiva * 2)
+            db.database.commit()
 
-        # Renderizar la nómina calculada
+            # Calcular nómina
+            salario_base = float(usuario[2])
+            total_nomina = ((salario_base / 208) * horas_trab) + (hora_extra * 7065) + (hora_extra_festiva * 11304)
+            deducciones = salario_base * 0.08
+            total_nomina -= deducciones
+
+            # Renderizar la nómina calculada
+            return render_template("nomina.html", usuario=usuario, ingresar_horas=False, nomina=total_nomina)
+
+        # Si es GET, renderizar el formulario si no hay horas ingresadas
+        if usuario[3] is None:
+            return render_template("nomina.html", usuario=usuario, ingresar_horas=True)
+
+        # Si ya tiene horas registradas, calcular la nómina y mostrarla
+        salario_base = float(usuario[2])
+        horas_trabajadas = float(usuario[3])
+        hora_extra = float(usuario[4])
+        hora_extra_festiva = float(usuario[5])
+
+        total_nomina = ((salario_base / 208) * horas_trabajadas) + (hora_extra * 7065) + (hora_extra_festiva * 11304)
+        deducciones = salario_base * 0.08
+        total_nomina -= deducciones
+
         return render_template("nomina.html", usuario=usuario, ingresar_horas=False, nomina=total_nomina)
-
-    # Si es GET, renderizar el formulario si no hay horas ingresadas
-    if usuario[3] is None:  # Si no tiene horas registradas
-        return render_template("nomina.html", usuario=usuario, ingresar_horas=True)
     
-    # Si ya tiene horas registradas, calcular la nómina y mostrarla
-    salario_base = float(usuario[2])  # Convertir salario a float
-    horas_trabajadas = usuario[3]
-    hora_extra = usuario[4]
-    hora_extra_festiva = usuario[5]
-
-    total_nomina = ((salario_base/240)*float(horas_trabajadas)) + (float(hora_extra) * 7065) + (float(hora_extra_festiva) * 11304)
-    deducciones =   (salario_base*0.08)
-    total_nomina = total_nomina - deducciones
-    # Renderizar la nómina calculada
-    return render_template("nomina.html", usuario=usuario, ingresar_horas=False, nomina=total_nomina)
+    finally:
+        cursor.close()
 
 
+@app.route('/liquidacion', methods=['GET'])
+def liquidacion():
+    if not is_logged_in():
+        return redirect(url_for('login'))
+
+    cursor = db.database.cursor()
+
+    try:
+        # Consulta para obtener los usuarios que tienen horas registradas
+        query = """
+        SELECT u.id, u.nombre, u.email, c.salario, SUM(h.horas_normales) AS horas_normales, SUM(h.horas_extras) AS horas_extras, SUM(h.horas_extra_diurna_festiva) AS horas_extra_diurna_festiva
+        FROM usuarios u
+        JOIN contrataciones c ON u.id = c.usuario_id
+        LEFT JOIN horas_trabajadas h ON u.id = h.usuario_id
+        WHERE h.horas_normales IS NOT NULL
+        GROUP BY u.id, u.nombre, u.email, c.salario;
+
+        """
+        cursor.execute(query)
+        usuarios = cursor.fetchall()
+
+        return render_template("liquidacion.html", usuarios=usuarios)
+
+    finally:
+        cursor.close()
+
+@app.route('/eliminar_usuario', methods=['POST'])
+def eliminar_usuario():
+    if not is_logged_in():
+        return redirect(url_for('login'))
+
+    usuario_id = request.form['usuario_id']
+
+    cursor = db.database.cursor()
+
+    # Eliminar al usuario de las tablas correspondientes
+    query_horas = "DELETE FROM horas_trabajadas WHERE usuario_id = %s"
+    cursor.execute(query_horas, (usuario_id,))
+
+    query_contrataciones = "DELETE FROM contrataciones WHERE usuario_id = %s"
+    cursor.execute(query_contrataciones, (usuario_id,))
+
+    query_usuario = "DELETE FROM usuarios WHERE id = %s"
+    cursor.execute(query_usuario, (usuario_id,))
+
+    db.database.commit()
+    cursor.close()
+
+    return redirect(url_for('liquidacion'))
 
 @app.route('/login', methods=["GET", "POST"])
 def login():
