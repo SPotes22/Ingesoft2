@@ -17,14 +17,14 @@ def home():
     
     # Obtener usuarios
     cursor.execute("SELECT * FROM usuarios")
-    myresult = cursor.fetchall()
+    myresult = cursor.fetchall()  # Asegúrate de que los resultados son leídos completamente
     insertObject = []
     columNames = [column[0] for column in cursor.description]
     for record in myresult:
         insertObject.append(dict(zip(columNames, record)))
 
     # Obtener roles
-    cursor.execute("SELECT * FROM roles")
+    cursor.execute("SELECT * FROM roles")  # Aquí no debería haber conflictos si la consulta anterior fue leída completamente
     roles = cursor.fetchall()
     roles_list = [{"id": role[0], "nombre": role[1]} for role in roles]  # Convertir a lista de diccionarios
 

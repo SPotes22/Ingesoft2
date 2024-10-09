@@ -14,11 +14,13 @@
 * aniadir usuarios y roles
 * eliminar usuarios
 * editar campos del usuario
+* calcular nomina
+* calcular liquidacion
 
 # Pendiente
 
-* calcular nomina
-* calcular liquidacion
+
+
 * "afiliar" usuarios a arl, pension , caja de compensacion
 
 # problemas
