@@ -241,19 +241,25 @@ def nomina():
         """
         cursor.execute(query, (user_id,))
         usuario = cursor.fetchone()
-
-        # Verificar si hay datos del usuario
+        #cursor.close()
         if not usuario:
             return "Usuario no encontrado", 404
 
+        # Agregar consulta de nóminas anteriores y leer resultados
+        query_nominas_anteriores = """
+        SELECT horas_trabajadas, total_nomina, fecha FROM nominas WHERE usuario_id = %s ORDER BY fecha DESC
+        """
+        cursor.execute(query_nominas_anteriores, (user_id,))
+        nominas_anteriores = cursor.fetchall()
+
+        # Procesar POST para ingresar horas trabajadas
         if request.method == "POST":
-            # Obtener las horas ingresadas en el formulario
             horas_trab = float(request.form['horas_trab'])
             hora_extra = float(request.form['hora_extra'])
             hora_extra_festiva = float(request.form['hora_extra_festiva'])
 
             # Insertar o actualizar las horas trabajadas
-            if usuario[3] is None:  # Si el usuario no tiene horas registradas
+            if usuario[3] is None:
                 query_insert = """
                 INSERT INTO horas_trabajadas (usuario_id, horas_normales, horas_extras, horas_extra_diurna_festiva)
                 VALUES (%s, %s, %s, %s)
@@ -269,20 +275,26 @@ def nomina():
 
             db.database.commit()
 
-            # Calcular nómina
+            # Calcular nómina y guardar en historial
             salario_base = float(usuario[2])
             total_nomina = ((salario_base / 208) * horas_trab) + (hora_extra * 7065) + (hora_extra_festiva * 11304)
             deducciones = salario_base * 0.08
             total_nomina -= deducciones
 
-            # Renderizar la nómina calculada
-            return render_template("nomina.html", usuario=usuario, ingresar_horas=False, nomina=total_nomina)
+            # Insertar la nómina en la tabla nominas
+            query_insert_nomina = """
+            INSERT INTO nominas (usuario_id, horas_trabajadas, total_nomina) VALUES (%s, %s, %s)
+            """
+            cursor.execute(query_insert_nomina, (user_id, horas_trab, total_nomina))
+            db.database.commit()
 
-        # Si es GET, renderizar el formulario si no hay horas ingresadas
+            return render_template("nomina.html", usuario=usuario, ingresar_horas=False, nomina=total_nomina, nominas_anteriores=nominas_anteriores)
+
+        # Si es GET, mostrar historial de nóminas anteriores y formulario o datos
         if usuario[3] is None:
-            return render_template("nomina.html", usuario=usuario, ingresar_horas=True)
+            return render_template("nomina.html", usuario=usuario, ingresar_horas=True, nominas_anteriores=nominas_anteriores)
 
-        # Si ya tiene horas registradas, calcular la nómina y mostrarla
+        # Mostrar nómina calculada si ya existen horas registradas
         salario_base = float(usuario[2])
         horas_trabajadas = float(usuario[3])
         hora_extra = float(usuario[4])
@@ -292,8 +304,8 @@ def nomina():
         deducciones = salario_base * 0.08
         total_nomina -= deducciones
 
-        return render_template("nomina.html", usuario=usuario, ingresar_horas=False, nomina=total_nomina)
-    
+        return render_template("nomina.html", usuario=usuario, ingresar_horas=False, nomina=total_nomina, nominas_anteriores=nominas_anteriores)
+
     finally:
         cursor.close()
 
@@ -380,7 +392,7 @@ def create():
     cursor = db.database.cursor()
     
     # Lista de sentencias SQL individuales
-    sql_statements = [
+    ''' sql_statements = [
         """
         CREATE TABLE roles (
             id INT PRIMARY KEY AUTO_INCREMENT,
@@ -439,8 +451,16 @@ def create():
         INSERT INTO usuarios (nombre, email, password, rol_id) 
         VALUES ('HR1', 'hr1@correo.com', 'password_hash', (SELECT id FROM roles WHERE nombre = 'HR'));
         """
-    ]
-
+    ]'''
+    sql_statements = [ """ CREATE TABLE nominas (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    usuario_id INT NOT NULL,
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    horas_trabajadas DECIMAL(5, 2) NOT NULL,
+    total_nomina DECIMAL(10, 2) NOT NULL,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+);
+""",]
     # Ejecuta cada sentencia SQL individualmente
     for sql in sql_statements:
         cursor.execute(sql)
@@ -450,6 +470,41 @@ def create():
 
     return redirect(url_for('home'))
 
+
+@app.route('/afiliar', methods=['GET', 'POST'])
+def afiliar():
+    if not is_logged_in():
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']  # o bien, recibe `user_id` desde el formulario
+    cursor = db.database.cursor()
+
+    if request.method == 'POST':
+        # Obtener valores del formulario
+        afiliar_arl = 'arl' in request.form
+        afiliar_pension = 'pension' in request.form
+        afiliar_caja = 'caja_compensacion' in request.form
+
+        # Insertar o actualizar la afiliación
+        query = """
+        INSERT INTO afiliaciones (usuario_id, arl, pension, caja_compensacion)
+        VALUES (%s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE arl = VALUES(arl), pension = VALUES(pension), caja_compensacion = VALUES(caja_compensacion)
+        """
+        cursor.execute(query, (user_id, afiliar_arl, afiliar_pension, afiliar_caja))
+        db.database.commit()
+
+        return redirect(url_for('afiliar'))  # Redirigir a la página de afiliación o a otra sección.
+
+    # Obtener datos de afiliación actuales
+    query = "SELECT arl, pension, caja_compensacion FROM afiliaciones WHERE usuario_id = %s"
+    cursor.execute(query, (user_id,))
+    afiliacion = cursor.fetchone()
+
+    cursor.close()
+    return render_template('afiliar.html', afiliacion=afiliacion)
+
+
 @app.route('/assing/')
 def assing():
     cursor = db.database.cursor()
@@ -457,7 +512,15 @@ def assing():
     # Lista de sentencias SQL individuales
     sql_statements = [
         """
-        INSERT INTO roles (nombre) VALUES ('User');
+        CREATE TABLE afiliaciones (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        usuario_id INT NOT NULL,
+        arl BOOLEAN DEFAULT FALSE,
+        pension BOOLEAN DEFAULT FALSE,
+        caja_compensacion BOOLEAN DEFAULT FALSE,
+        fecha_afiliacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+    );
         """,
     ]
 
@@ -470,7 +533,41 @@ def assing():
 
     return redirect(url_for('home'))
     
+@app.route('/novedades', methods=["GET"])
+def novedades():
+    cursor = db.database.cursor()
+
+    # Consulta para obtener información de novedades de bonos y horas trabajadas
+    query = """
+    SELECT u.nombre AS usuario, 
+           b.monto AS bono_monto, 
+           b.descripcion AS bono_descripcion, 
+           b.fecha_asignacion AS bono_fecha, 
+           h.horas_normales, 
+           h.horas_extras, 
+           h.horas_extra_diurna_festiva, 
+           c.rol_asignado AS contrato_rol, 
+           c.salario AS contrato_salario, 
+           c.fecha_contratacion AS contrato_fecha
+    FROM usuarios u
+    LEFT JOIN bonos b ON u.id = b.usuario_id
+    LEFT JOIN horas_trabajadas h ON u.id = h.usuario_id
+    LEFT JOIN contrataciones c ON u.id = c.usuario_id
+    ORDER BY b.fecha_asignacion DESC, h.horas_normales DESC;
+    """
     
+    cursor.execute(query)
+    novedades_data = cursor.fetchall()
+    
+    # Convertir el resultado en lista de diccionarios para fácil acceso en la plantilla
+    columNames = [column[0] for column in cursor.description]
+    novedades = [dict(zip(columNames, record)) for record in novedades_data]
+    
+    cursor.close()
+
+    # Renderizar la plantilla 'novedades.html' con los datos obtenidos
+    return render_template("novedades.html", novedades=novedades)
+ 
 
 if __name__ == '__main__':
     app.run(debug=True, port=4000)

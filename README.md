@@ -19,8 +19,6 @@
 
 # Pendiente
 
-
-
 * "afiliar" usuarios a arl, pension , caja de compensacion
 
 # problemas
