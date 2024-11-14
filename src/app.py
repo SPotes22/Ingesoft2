@@ -3,13 +3,17 @@ import os
 import database as db
 from datetime import date
 
+
 template_dir = os.path.dirname(os.path.abspath(os.path.dirname(__file__)))
 template_dir = os.path.join(template_dir,"src","templates")
+code_dir = os.path.join(template_dir,"src","userController")
 
 app = Flask(__name__, template_folder = template_dir)
 app.secret_key = 'mi_clave_super_secreta_123'
 
 # rutas de la aplicacion
+
+    
 
 @app.route('/')
 def home():
@@ -32,6 +36,26 @@ def home():
     
     return render_template("index.html", data=insertObject, roles=roles_list)  # Pasar roles a la plantilla
 
+@app.route('/hola')
+def hola():
+    cursor = db.database.cursor()
+    
+    # Obtener usuarios
+    cursor.execute("SELECT * FROM horas_trabajadas")
+    myresult = cursor.fetchall()  # Asegúrate de que los resultados son leídos completamente
+    insertObject = []
+    columNames = [column[0] for column in cursor.description]
+    for record in myresult:
+        insertObject.append(dict(zip(columNames, record)))
+
+    # Obtener roles
+    cursor.execute("SELECT * FROM roles")  # Aquí no debería haber conflictos si la consulta anterior fue leída completamente
+    roles = cursor.fetchall()
+    roles_list = [{"id": role[0], "nombre": role[1]} for role in roles]  # Convertir a lista de diccionarios
+
+    cursor.close()
+    
+    return render_template("index.html", data=insertObject, roles=roles_list)  # Pasar roles a la plantilla
 
 #ruta para guardar usuarios en bd
 @app.route('/user', methods=["POST"])
@@ -452,7 +476,7 @@ def create():
         VALUES ('HR1', 'hr1@correo.com', 'password_hash', (SELECT id FROM roles WHERE nombre = 'HR'));
         """
     ]'''
-    sql_statements = [ """ CREATE TABLE nominas (
+    sql_statements = [ """ CREATE TABLE nomina (
     id INT AUTO_INCREMENT PRIMARY KEY,
     usuario_id INT NOT NULL,
     fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
